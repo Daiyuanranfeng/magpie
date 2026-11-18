@@ -31,6 +31,17 @@ const asked = {
   order: [{ id: "tavily:k1", provider: "Tavily", name: "Tavily", who: "tvly…ab12", kind: "key", model: "Tavily" }],
   tries: [{ id: "tavily:k1", model: "Tavily", start: at(-0.5), done: true, status: 200, ms: 820 }], done: true, status: 200, ms: 820,
 };
+// The gateway omits who for plugin searches without a key, account or URL.
+const keylessSearch = (id, done) => {
+  const model = "Agent Search";
+  const time = at(-1);
+  return {
+    id, seq: id, time, agent: "magpie", model, kind: "web_search",
+    order: [{ id: model, provider: model, name: model, kind: "key", model }],
+    tries: [{ id: model, model, start: time, done, status: done ? 200 : 0 }],
+    done, status: done ? 200 : 0,
+  };
+};
 const routes = [
   asked,
   call(104, 0, "magpie", "gpt-6.1-sol", "codex", { kind: "web_search", for: { agent: "codex", model: "deepseek/deepseek-flash" } }),
@@ -39,7 +50,7 @@ const routes = [
   call(101, 3, "codex", "gpt-6-luna", "codex", { kind: "thread_title" }),
 ];
 
-function serve(lang) {
+function serve(lang, liveRoutes = []) {
   const state = {
     agents: [{ id: "codex", name: "Codex", path: "/test/config.toml", fields: [] }],
     clients: [{ id: "codex", name: "Codex", icon: "codex-color" }, { id: "magpie", name: "magpie", icon: "magpie" }],
@@ -54,7 +65,7 @@ function serve(lang) {
     if (url.pathname === "/api/plugins") return json({ plugins: [] });
     if (url.pathname === "/api/gateway/trace") {
       if (url.searchParams.get("wait")) await new Promise((r) => setTimeout(r, 20e3));
-      return json({ mine: true, now: now.toISOString(), seq: 1, totals: { requests: 0, rerouted: 0, errors: 0 }, routes: [] });
+      return json({ mine: true, now: now.toISOString(), seq: 202, totals: { requests: liveRoutes.length, rerouted: 0, errors: 0 }, routes: liveRoutes });
     }
     if (url.pathname === "/api/gateway/history") {
       const d = url.searchParams.get("day");
@@ -76,6 +87,15 @@ const want = {
 };
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
+  test(`${engine}: the live list labels keyless searches without an account name`, async (t) => {
+    const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
+    t.after(() => browser.close());
+    const page = await browser.newPage();
+    await page.route("**/*", serve("en", [keylessSearch(201, true), keylessSearch(202, false)]));
+    await page.goto("http://magpie.test/?view=routing");
+    assert.equal(await page.locator(".rt-req.ok .said").textContent({ timeout: 5000 }), "Agent Search");
+    assert.equal(await page.locator(".rt-req.wait .said").textContent({ timeout: 5000 }), "Agent Search is answering…");
+  });
   for (const lang of ["en", "zh"]) {
     test(`${engine} ${lang}: a title and magpie's web search say what they were`, async (t) => {
       const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));

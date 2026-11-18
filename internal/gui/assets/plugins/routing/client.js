@@ -4106,17 +4106,20 @@ function routingPage(part) {
   // was masked)
   const waitWord = (r) => t(r.phase === "redact" ? "masking…" : r.phase === "queue" ? "queued…" : "routing…");
 
+  // A search source can answer without a named key or account.
+  const liveSeatLabel = (w) => [who(w), w.model].filter(Boolean).join(" · ") || w.name || w.provider;
+
   // who answered a request, or what its agent got
   function outcome(r) {
     if (!r.done) {
       const tr = r.tries[r.tries.length - 1], w = tr && tried(r, tr);
-      return [w ? t("{who} is answering…", { who: `${who(w)} · ${w.model}` }) : waitWord(r), "wait", tr];
+      return [w ? t("{who} is answering…", { who: liveSeatLabel(w) }) : waitWord(r), "wait", tr];
     }
     const ok = r.tries.find((tr) => tr.done && tryOk(tr)), w = ok && tried(r, ok);
     // a 200 whose error is a note of its own — Codex's titles off in
     // Settings, a reply with no title in it — answered: its try has no
     // fail. Bad is a reply that broke off, or every try failing
-    if (r.status < 400 && (ok || !r.tries.length)) return [w ? `${who(w)} · ${w.model}` : r.provider, r.tries.length > 1 ? "moved" : "ok", ok];
+    if (r.status < 400 && (ok || !r.tries.length)) return [w ? liveSeatLabel(w) : r.provider, r.tries.length > 1 ? "moved" : "ok", ok];
     const last = r.tries[r.tries.length - 1];
     // one its agent canceled (a person stopped it, or sent the next message
     // while it came) was no error it saw: told, but not as a failure
